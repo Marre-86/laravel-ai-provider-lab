@@ -40,6 +40,9 @@
         </main>
         <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
         <script>
+            $(document).ready(function() {
+                $('#prompt').focus();
+            });
             $('form').on('submit', function () {
                 $('#submit-button').prop('disabled', true);
                 $('#submit-spinner').removeClass('hidden');
