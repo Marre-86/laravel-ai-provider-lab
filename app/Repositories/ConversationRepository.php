@@ -68,7 +68,7 @@ class ConversationRepository
 
         return [
             'prompt' => $messages->get('user')?->content,
-            'response' => json_decode($messages->get('assistant')?->content, true)['value'] ?? '',
+            'response' => $messages->get('assistant')?->content,
         ];
     }
 }

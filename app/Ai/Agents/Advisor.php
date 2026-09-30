@@ -2,18 +2,16 @@
 
 namespace App\Ai\Agents;
 
-use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Concerns\RemembersConversations;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\Conversational;
-use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Contracts\HasTools;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Promptable;
 use Laravel\Ai\Providers\Tools\ProviderTool;
 use Stringable;
 
-class Advisor implements Agent, Conversational, HasStructuredOutput, HasTools
+class Advisor implements Agent, Conversational, HasTools
 {
     use Promptable, RemembersConversations;
 
@@ -35,13 +33,4 @@ class Advisor implements Agent, Conversational, HasStructuredOutput, HasTools
         return [];
     }
 
-    /**
-     * Get the agent's structured output schema definition.
-     */
-    public function schema(JsonSchema $schema): array
-    {
-        return [
-            'value' => $schema->string()->required(),
-        ];
-    }
 }

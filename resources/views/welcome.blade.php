@@ -3,6 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="csrf-token" content="{{ csrf_token() }}">
         <title>{{ config('app.name', 'Laravel') }}</title>
         @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
             @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -13,7 +14,6 @@
             <section class="w-full rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200">
                 {{-- <h1 class="text-2xl font-semibold">Submit a prompt</h1>
                 <p class="mt-2 text-sm text-gray-600">Enter a prompt below to send it to the application.</p> --}}
-                <form action="{{ route('prompts.store') }}" method="POST" class="mt-6 space-y-4">
                     @csrf
                     <input id="provider" name="provider" type="hidden" value="{{ old('provider', $selectedProvider) }}">
                     <div>
@@ -36,13 +36,14 @@
                             <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                         @enderror
                     </div>
-                    <button id="submit-button" type="submit" class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                    <button id="submit-button" class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
                         <svg id="submit-spinner" class="hidden size-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                         </svg>
                         <span id="submit-label">Ask LLM</span>
                     </button>
+                    <div id="response"></div>
                     @if (session('error'))
                         <div id="connection-error" class="text-red-600">
                             {{ session('error') }}
@@ -53,6 +54,7 @@
             </section>
         </main>
         <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <script>
             $(document).ready(function() {
                 $('#prompt').focus();
@@ -66,7 +68,6 @@
             const exchanges = @json($lastExchanges);
             function renderExchange(provider) {
                 const exchange = exchanges[provider];
-                console.log(exchange)
                 $('#exchange-container').empty();
                 $('#connection-error').empty();
                 $('#prompt').focus();
@@ -77,7 +78,7 @@
                     .appendTo('#exchange-container');
                 $('<div>', { class: 'exchange mt-8 rounded-lg bg-gray-50 p-5 ring-1 ring-gray-200', role: 'status' })
                     .append($('<h2>', { class: 'text-sm font-semibold text-gray-700', text: ({{ Js::from(config('ai.selectable_providers')) }}[provider]?.label || 'Response') + ' response' }))
-                    .append($('<p>', { class: 'mt-2 whitespace-pre-wrap text-gray-800', text: exchange.response || '' }))
+                    .append($('<div>', { class: 'mt-2 text-gray-800'}).html(marked.parse(exchange.response || '')))
                     .appendTo('#exchange-container');
             }
             $('.provider-button').on('click', function() {
@@ -91,15 +92,86 @@
 
                 renderExchange(provider);
             });
-            $('form').on('submit', function () {
+
+            $('#submit-button').on('click', async function () {
+                $('#response').empty();
                 $('#submit-button').prop('disabled', true);
                 $('#submit-spinner').removeClass('hidden');
                 $('#submit-label').text('Generating...');
+
+                const response = await fetch('{{ route('prompts.stream') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    },
+                    body: JSON.stringify({
+                        prompt: $('#prompt').val(),
+                        provider: $('#provider').val(),
+                    }),
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                let buffer = '';
+                let fullResponse = '';
+                let streamFinished = false;
+
+                while (!streamFinished) {
+                    const { value, done } = await reader.read();
+
+                    if (done) {
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) {
+                            continue;
+                        }
+
+                        const payload = line.slice(6);
+
+                        // Laravel AI SDK sends this after the stream.
+                        if (payload === '[DONE]') {
+                            continue;
+                        }
+
+                        const data = JSON.parse(payload);
+
+                        if (data.type === 'text_delta') {
+                            fullResponse += data.delta;
+
+                            $('#response').append(
+                                document.createTextNode(data.delta)
+                            );
+                        }
+
+                        if (data.type === 'stream_end') {
+                            streamFinished = true;
+
+                            const html = marked.parse(fullResponse);
+
+                            $('#response').html(html);
+
+                            $('#submit-button').prop('disabled', false);
+                            $('#submit-spinner').addClass('hidden');
+                            $('#submit-label').text('Ask LLM');
+
+                            break;
+                        }
+                    }
+                }
             });
             $('#prompt').on('keydown', function (event) {
                 if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
-                    $(this).closest('form').trigger('submit');
+                    $('#submit-button').trigger('click');
                 }
             });
         </script>
@@ -133,6 +205,10 @@
                 border-color: #4f46e5 !important;
                 color: #ffffff !important;
                 cursor: default;
+            }
+
+            #response {
+                white-space: pre-wrap;
             }
 
         </style>

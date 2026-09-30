@@ -12,6 +12,7 @@ use Laravel\Ai\Exceptions\AiException;
 use Laravel\Ai\Exceptions\ProviderConnectionException;
 use Laravel\Ai\Exceptions\ProviderOverloadedException;
 use Laravel\Ai\Responses\StructuredAgentResponse;
+use Laravel\Ai\Responses\StreamableAgentResponse;
 use LogicException;
 
 class PromptController extends Controller
@@ -78,5 +79,34 @@ class PromptController extends Controller
             'response' => $response['value'],
             'prompt' => $validated['prompt'],
         ]);
+    }
+
+    public function stream(Request $request): StreamableAgentResponse
+    {
+        $validated = $request->validate([
+            'prompt' => ['required', 'string', 'max:10000'],
+            'provider' => ['required', 'string'],
+        ]);
+
+        $user = User::find(1);
+
+        $conversation = $this->conversationRepository->findOrCreate(
+            $user,
+            Advisor::class,
+            $validated['provider'],
+            $validated['prompt'],
+        );
+
+        $selectedProvider = config(
+            "ai.selectable_providers.{$validated['provider']}"
+        );
+
+        return (new Advisor)
+            ->continue($conversation->id, $user)
+            ->stream(
+                $validated['prompt'],
+                provider: $selectedProvider['provider'],
+                model: $selectedProvider['model'],
+            );
     }
 }
