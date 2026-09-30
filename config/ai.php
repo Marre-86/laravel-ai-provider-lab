@@ -13,13 +13,31 @@ return [
     |
     */
 
-    'default' => 'ollama',
+    'default' => 'openrouter',
     'default_for_images' => 'gemini',
     'default_for_audio' => 'openai',
     'default_for_transcription' => 'openai',
     'default_for_embeddings' => 'openai',
     'default_for_reranking' => 'cohere',
     'default_for_classification' => 'typesafe',
+
+    'selectable_providers' => [
+        'ollama' => [
+            'label' => 'Ollama',
+            'provider' => 'ollama',
+            'model' => 'gemma3:12b',
+        ],
+        'gemini' => [
+            'label' => 'Gemini',
+            'provider' => 'gemini',
+            'model' => 'gemini-3-flash-preview',
+        ],
+        'openrouter' => [
+            'label' => 'OpenRouter',
+            'provider' => 'openrouter',
+            'model' => 'nvidia/nemotron-3-ultra-550b-a55b:free',
+        ],
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -104,6 +122,11 @@ return [
             'driver' => 'gemini',
             'key' => env('GEMINI_API_KEY'),
             'url' => env('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/'),
+            'models' => [
+                'text' => [
+                    'default' => 'gemini-3-flash-preview',
+                ],
+            ],
         ],
 
         'groq' => [
@@ -148,6 +171,11 @@ return [
         'openrouter' => [
             'driver' => 'openrouter',
             'key' => env('OPENROUTER_API_KEY'),
+            'models' => [
+                'text' => [
+                    'default' => 'nvidia/nemotron-3-ultra-550b-a55b:free',
+                ],
+            ],
         ],
 
         'typesafe' => [
