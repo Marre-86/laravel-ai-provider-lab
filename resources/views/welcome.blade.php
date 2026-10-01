@@ -20,8 +20,9 @@
                         <span class="block text-sm font-medium">Provider</span>
                         <div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="Choose a model">
                             @foreach (config('ai.selectable_providers') as $key => $provider)
-                                <button type="button" class="provider-button rounded-md border px-4 py-2 text-sm font-medium transition" data-provider="{{ $key }}">
-                                    {{ $provider['label'] }}
+                                <button type="button" class="provider-button rounded-md border px-4 py-2 text-left text-sm font-medium transition" data-provider="{{ $key }}">
+                                    <span class="block">{{ $provider['label'] }}</span>
+                                    <span class="mt-0.5 block font-mono text-xs font-normal text-red-400">{{ $provider['model'] }}</span>
                                 </button>
                             @endforeach
                         </div>
@@ -36,14 +37,13 @@
                             <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                         @enderror
                     </div>
-                    <button id="submit-button" class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                    <button id="submit-button" class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm mt-2 font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
                         <svg id="submit-spinner" class="hidden size-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                         </svg>
                         <span id="submit-label">Ask LLM</span>
                     </button>
-                    <div id="response"></div>
                     @if (session('error'))
                         <div id="connection-error" class="text-red-600">
                             {{ session('error') }}
@@ -66,6 +66,37 @@
                 renderExchange($('#provider').val());
             });
             const exchanges = @json($lastExchanges);
+            const providerLabels = @json(config('ai.selectable_providers'));
+
+            function prepareExchangeForResponse() {
+                const $container = $('#exchange-container');
+
+                // The previous question is no longer the last one.
+                $container.children('.exchange').first().remove();
+
+                let $responseBlock = $container.children('.exchange').last();
+                let $responseBody = $responseBlock.find('[data-exchange-response]');
+
+                if (! $responseBody.length) {
+                    $responseBlock = $('<div>', {
+                        class: 'exchange mt-8 rounded-lg bg-gray-50 p-5 ring-1 ring-gray-200',
+                        role: 'status',
+                    });
+                    $responseBody = $('<div>', { class: 'mt-2 text-gray-800' });
+                    $responseBlock
+                        .append($('<h2>', {
+                            class: 'text-sm font-semibold text-gray-700',
+                            text: (providerLabels[$('#provider').val()]?.label || 'Response') + ' response',
+                        }))
+                        .append($responseBody)
+                        .appendTo($container);
+                }
+
+                // Stream straight into the response block instead of a standalone div.
+                $responseBlock.addClass('hidden');
+                $responseBody.empty().append($('<div>', { id: 'response' }));
+            }
+
             function renderExchange(provider) {
                 const exchange = exchanges[provider];
                 $('#exchange-container').empty();
@@ -77,8 +108,8 @@
                     .append($('<p>', { class: 'mt-2 whitespace-pre-wrap text-indigo-950', text: exchange.prompt || '' }))
                     .appendTo('#exchange-container');
                 $('<div>', { class: 'exchange mt-8 rounded-lg bg-gray-50 p-5 ring-1 ring-gray-200', role: 'status' })
-                    .append($('<h2>', { class: 'text-sm font-semibold text-gray-700', text: ({{ Js::from(config('ai.selectable_providers')) }}[provider]?.label || 'Response') + ' response' }))
-                    .append($('<div>', { class: 'mt-2 text-gray-800'}).html(marked.parse(exchange.response || '')))
+                    .append($('<h2>', { class: 'text-sm font-semibold text-gray-700', text: (providerLabels[provider]?.label || 'Response') + ' response' }))
+                    .append($('<div>', { class: 'mt-2 text-gray-800', 'data-exchange-response': '' }).html(marked.parse(exchange.response || '')))
                     .appendTo('#exchange-container');
             }
             $('.provider-button').on('click', function() {
@@ -94,7 +125,7 @@
             });
 
             $('#submit-button').on('click', async function () {
-                $('#response').empty();
+                prepareExchangeForResponse();
                 $('#submit-button').prop('disabled', true);
                 $('#submit-spinner').removeClass('hidden');
                 $('#submit-label').text('Generating...');
@@ -146,6 +177,9 @@
 
                         if (data.type === 'text_delta') {
                             fullResponse += data.delta;
+
+                            // Reveal the response block only once content starts arriving.
+                            $('#response').closest('.exchange').removeClass('hidden');
 
                             $('#response').append(
                                 document.createTextNode(data.delta)
