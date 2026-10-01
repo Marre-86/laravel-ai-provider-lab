@@ -78,3 +78,13 @@ it('surfaces mid-stream provider errors and truncated streams', function () {
     expect($script)->toContain('if (! streamFinished)');
     expect($script)->toContain('The stream ended unexpectedly');
 });
+
+it('appends the failure notice instead of replacing the partial answer', function () {
+    $script = file_get_contents(resource_path('js/welcome.js'));
+
+    // The notice is its own element, placed after whatever streamed in.
+    expect($script)->toContain("'data-stream-error': ''");
+
+    // Writing the message over the pane would discard the half-generated answer.
+    expect($script)->not->toContain('->text(message)');
+});

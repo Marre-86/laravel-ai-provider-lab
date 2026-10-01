@@ -78,7 +78,15 @@ function prepareExchangesForResponses() {
 
 function showStreamError($response, message) {
     $response.children('[data-spinner]').remove();
-    $response.removeClass('text-gray-800').addClass('text-red-600').text(message);
+
+    // Whatever streamed in before the failure stays put; the notice goes below it.
+    $response.append(
+        $('<p>', {
+            class: 'mt-2 text-sm text-red-600',
+            'data-stream-error': '',
+            text: message,
+        })
+    );
 }
 
 async function streamProvider(provider) {
