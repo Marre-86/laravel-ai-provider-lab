@@ -6,30 +6,16 @@
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <title>{{ config('app.name', 'Laravel') }}</title>
         @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
-            @vite(['resources/css/app.css', 'resources/js/app.js'])
+            @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/welcome.js'])
         @endif
     </head>
     <body class="min-h-screen bg-gray-100 text-gray-900">
-        <main class="mx-auto flex min-h-screen w-full max-w-2xl items-center px-6 py-12">
+        <main class="mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-12">
             <section class="w-full rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200">
                 {{-- <h1 class="text-2xl font-semibold">Submit a prompt</h1>
                 <p class="mt-2 text-sm text-gray-600">Enter a prompt below to send it to the application.</p> --}}
                     @csrf
                     <input id="provider" name="provider" type="hidden" value="{{ old('provider', $selectedProvider) }}">
-                    <div>
-                        <span class="block text-sm font-medium">Provider</span>
-                        <div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="Choose a model">
-                            @foreach (config('ai.selectable_providers') as $key => $provider)
-                                <button type="button" class="provider-button rounded-md border px-4 py-2 text-left text-sm font-medium transition" data-provider="{{ $key }}">
-                                    <span class="block">{{ $provider['label'] }}</span>
-                                    <span class="mt-0.5 block font-mono text-xs font-normal text-red-400">{{ $provider['model'] }}</span>
-                                </button>
-                            @endforeach
-                        </div>
-                        @error('model')
-                            <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
-                        @enderror
-                    </div>
                     <div>
                         {{-- <label for="prompt" class="block text-sm font-medium">Prompt</label> --}}
                         <textarea id="prompt" name="prompt" rows="7" required maxlength="10000" class="mt-2 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200" placeholder="Write your prompt here...">{{ old('prompt') }}</textarea>
@@ -50,202 +36,18 @@
                         </div>
                     @endif
                 </form>
-                <div id="exchange-container"></div>
+                <div id="exchange-container" class="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3"></div>
             </section>
         </main>
         <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-        <script>
-            $(document).ready(function() {
-                $('#prompt').focus();
-                $('.provider-button').each(function() {
-                    var $btn = $(this);
-                    var isCurrent = $btn.data('provider') === $('#provider').val();
-                    $btn.toggleClass('active', isCurrent);
-                });
-                renderExchange($('#provider').val());
-            });
-            const exchanges = @json($lastExchanges);
-            const providerLabels = @json(config('ai.selectable_providers'));
-
-            function prepareExchangeForResponse() {
-                const $container = $('#exchange-container');
-
-                // The previous question is no longer the last one.
-                $container.children('.exchange').first().remove();
-
-                let $responseBlock = $container.children('.exchange').last();
-                let $responseBody = $responseBlock.find('[data-exchange-response]');
-
-                if (! $responseBody.length) {
-                    $responseBlock = $('<div>', {
-                        class: 'exchange mt-8 rounded-lg bg-gray-50 p-5 ring-1 ring-gray-200',
-                        role: 'status',
-                    });
-                    $responseBody = $('<div>', { class: 'mt-2 text-gray-800' });
-                    $responseBlock
-                        .append($('<h2>', {
-                            class: 'text-sm font-semibold text-gray-700',
-                            text: (providerLabels[$('#provider').val()]?.label || 'Response') + ' response',
-                        }))
-                        .append($responseBody)
-                        .appendTo($container);
-                }
-
-                // Stream straight into the response block instead of a standalone div.
-                $responseBlock.addClass('hidden');
-                $responseBody.empty().append($('<div>', { id: 'response' }));
-            }
-
-            function renderExchange(provider) {
-                const exchange = exchanges[provider];
-                $('#exchange-container').empty();
-                $('#connection-error').empty();
-                $('#prompt').focus();
-                if (!exchange || (!exchange.prompt && !exchange.response)) return;
-                $('<div>', { class: 'exchange mt-8 rounded-lg bg-indigo-50 p-5 ring-1 ring-indigo-200' })
-                    .append($('<h2>', { class: 'text-sm font-semibold text-indigo-900', text: 'Last question' }))
-                    .append($('<p>', { class: 'mt-2 whitespace-pre-wrap text-indigo-950', text: exchange.prompt || '' }))
-                    .appendTo('#exchange-container');
-                $('<div>', { class: 'exchange mt-8 rounded-lg bg-gray-50 p-5 ring-1 ring-gray-200', role: 'status' })
-                    .append($('<h2>', { class: 'text-sm font-semibold text-gray-700', text: (providerLabels[provider]?.label || 'Response') + ' response' }))
-                    .append($('<div>', { class: 'mt-2 text-gray-800', 'data-exchange-response': '' }).html(marked.parse(exchange.response || '')))
-                    .appendTo('#exchange-container');
-            }
-            $('.provider-button').on('click', function() {
-                var $btn = $(this);
-                var provider = $btn.data('provider');
-
-                $('#provider').val(provider);
-
-                $('.provider-button').removeClass('active');   // убираем active у всех
-                $btn.addClass('active');                       // ставим у нажатой
-
-                renderExchange(provider);
-            });
-
-            $('#submit-button').on('click', async function () {
-                prepareExchangeForResponse();
-                $('#submit-button').prop('disabled', true);
-                $('#submit-spinner').removeClass('hidden');
-                $('#submit-label').text('Generating...');
-
-                const response = await fetch('{{ route('prompts.stream') }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
-                    },
-                    body: JSON.stringify({
-                        prompt: $('#prompt').val(),
-                        provider: $('#provider').val(),
-                    }),
-                });
-
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-
-                let buffer = '';
-                let fullResponse = '';
-                let streamFinished = false;
-
-                while (!streamFinished) {
-                    const { value, done } = await reader.read();
-
-                    if (done) {
-                        break;
-                    }
-
-                    buffer += decoder.decode(value, { stream: true });
-
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop();
-
-                    for (const line of lines) {
-                        if (!line.startsWith('data: ')) {
-                            continue;
-                        }
-
-                        const payload = line.slice(6);
-
-                        // Laravel AI SDK sends this after the stream.
-                        if (payload === '[DONE]') {
-                            continue;
-                        }
-
-                        const data = JSON.parse(payload);
-
-                        if (data.type === 'text_delta') {
-                            fullResponse += data.delta;
-
-                            // Reveal the response block only once content starts arriving.
-                            $('#response').closest('.exchange').removeClass('hidden');
-
-                            $('#response').append(
-                                document.createTextNode(data.delta)
-                            );
-                        }
-
-                        if (data.type === 'stream_end') {
-                            streamFinished = true;
-
-                            const html = marked.parse(fullResponse);
-
-                            $('#response').html(html);
-
-                            $('#submit-button').prop('disabled', false);
-                            $('#submit-spinner').addClass('hidden');
-                            $('#submit-label').text('Ask LLM');
-
-                            break;
-                        }
-                    }
-                }
-            });
-            $('#prompt').on('keydown', function (event) {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    $('#submit-button').trigger('click');
-                }
-            });
-        </script>
-        <style>
-            .provider-button {
-                transition: all 0.2s ease;
-                /* базовые нейтральные стили */
-                background-color: #ffffff;
-                border-color: #d1d5db;
-                color: #374151;
-            }
-
-            /* hover ТОЛЬКО для НЕактивных */
-            .provider-button:not(.active):hover {
-                background-color: #f3f4f6;
-                border-color: #9ca3af;
-                color: #111827;
-                cursor: pointer;
-            }
-
-            /* активная кнопка — фиксированный стиль, без hover */
-            .provider-button.active {
-                background-color: #4f46e5;
-                border-color: #4f46e5;
-                color: #ffffff;
-            }
-
-            .provider-button.active:hover {
-                /* явно запрещаем любые изменения при наведении */
-                background-color: #4f46e5 !important;
-                border-color: #4f46e5 !important;
-                color: #ffffff !important;
-                cursor: default;
-            }
-
-            #response {
-                white-space: pre-wrap;
-            }
-
-        </style>
-
+        @php
+            $welcomeData = [
+                'exchanges' => $lastExchanges,
+                'providers' => config('ai.selectable_providers'),
+                'streamUrl' => route('prompts.stream'),
+            ];
+        @endphp
+        <script type="application/json" id="welcome-data">@json($welcomeData)</script>
     </body>
 </html>
