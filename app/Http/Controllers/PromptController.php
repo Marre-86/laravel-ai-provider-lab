@@ -3,16 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Ai\Agents\Advisor;
+use App\Ai\Agents\Reviewer;
 use App\Models\User;
 use App\Repositories\ConversationRepository;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Laravel\Ai\Exceptions\AiException;
 use Laravel\Ai\Exceptions\ProviderConnectionException;
 use Laravel\Ai\Exceptions\ProviderOverloadedException;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use Laravel\Ai\Responses\StreamableAgentResponse;
+use Laravel\Ai\Responses\StructuredAgentResponse;
 use LogicException;
 
 class PromptController extends Controller
@@ -108,5 +110,53 @@ class PromptController extends Controller
                 provider: $selectedProvider['provider'],
                 model: $selectedProvider['model'],
             );
+    }
+
+    public function review(Request $request): StreamableAgentResponse
+    {
+        $validated = $request->validate([
+            'prompt' => ['required', 'string', 'max:10000'],
+            'instruction' => ['required', 'string', 'max:10000'],
+            'provider' => ['required', 'string', 'in:'.implode(',', array_keys(config('ai.selectable_providers')))],
+            'responses' => ['required', 'array'],
+            'responses.*' => ['nullable', 'string', 'max:20000'],
+        ]);
+
+        $submitted = collect(config('ai.selectable_providers'))
+            ->map(fn (array $model, string $provider) => [
+                'label' => $model['label'],
+                'response' => $validated['responses'][$provider] ?? null,
+            ])
+            ->filter(fn (array $entry) => filled($entry['response']))
+            ->map(fn (array $entry) => "### {$entry['label']}\n{$entry['response']}")
+            ->implode("\n\n");
+
+        if ($submitted === '') {
+            throw ValidationException::withMessages([
+                'responses' => 'There are no provider responses to evaluate.',
+            ]);
+        }
+
+        $selectedProvider = config("ai.selectable_providers.{$validated['provider']}");
+
+        return (new Reviewer)
+            ->stream(
+                $this->composeReviewPrompt($validated['prompt'], $validated['instruction'], $submitted),
+                provider: $selectedProvider['provider'],
+                model: $selectedProvider['model'],
+            );
+    }
+
+    /**
+     * Combine the original prompt, the evaluation instruction and the collected
+     * provider answers into the single prompt sent to the reviewer.
+     */
+    private function composeReviewPrompt(string $prompt, string $instruction, string $submitted): string
+    {
+        return implode("\n\n", [
+            "## Prompt given to each provider\n\n".$prompt,
+            "## Instruction\n\n".$instruction,
+            "## Answers\n\n".$submitted,
+        ]);
     }
 }

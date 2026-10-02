@@ -41,6 +41,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Evaluation Prompt
+    |--------------------------------------------------------------------------
+    |
+    | The default instruction shown in the evaluation textarea on the welcome
+    | page. It is sent alongside the original prompt and the collected provider
+    | responses, and the user may edit it before submitting.
+    |
+    */
+
+    'evaluation_prompt' => <<<'TEXT'
+        Compare the answers below and evaluate them against the original prompt.
+
+        For each provider, note what it got right, what it got wrong, and anything it stated that the others contradict or that looks invented.
+
+        Finish by naming the most accurate answer and explaining what made it the strongest. Flag any disagreement between providers rather than silently picking a side.
+        TEXT,
+
+    /*
+    |--------------------------------------------------------------------------
     | Caching
     |--------------------------------------------------------------------------
     |

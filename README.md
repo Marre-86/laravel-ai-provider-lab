@@ -41,6 +41,13 @@ The project uses Laravel's `composer run dev` workflow with the Laravel developm
 
 For local development, the application uses multiple PHP built-in server workers so concurrent streaming requests can be processed in parallel.
 
+
+## Response Evaluation
+
+You can send the prompt and every answer collected below to one of the configured providers for evaluation.
+
+The evaluation textarea is pre-populated from `config('ai.evaluation_prompt')` and can be edited before submission.
+
 ## Purpose
 
 This is primarily a learning project for understanding how Laravel's AI abstractions, service container, middleware, agents, streaming, structured responses, and persistent conversations work in a real Laravel application.

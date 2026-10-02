@@ -75,7 +75,8 @@ it('surfaces mid-stream provider errors and truncated streams', function () {
     expect($script)->toContain("'recoverable' in event");
 
     // A connection that closes without a stream_end is a truncation, not a success.
-    expect($script)->toContain('if (! streamFinished)');
+    expect($script)->toContain('if (!streamFinished)');
+    expect($script)->toContain('onTruncated(fullResponse)');
     expect($script)->toContain('The stream ended unexpectedly');
 });
 
