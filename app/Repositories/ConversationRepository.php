@@ -10,23 +10,19 @@ class ConversationRepository
 {
     public function findFor(
         object $participant,
-        string $agent,
-        string $provider,
+        string $model,
     ): ?Conversation {
         return Conversation::query()
             ->where('participant_type', Conversation::participantType($participant))
             ->where('participant_id', Conversation::participantKey($participant))
-            // ->whereHas('messages', function ($query) use ($agent) {
-            //     $query->where('agent', $agent);
-            // })
-            ->where('provider', $provider)
+            ->where('model', $model)
             ->latest('created_at')
             ->first();
     }
 
     public function createFor(
         object $participant,
-        string $provider,
+        string $model,
         string $title,
     ): Conversation {
         return Conversation::query()->create([
@@ -34,28 +30,27 @@ class ConversationRepository
             'participant_type' => Conversation::participantType($participant),
             'participant_id' => Conversation::participantKey($participant),
             'title' => $title,
-            'provider' => $provider,
+            'model' => $model,
         ]);
     }
 
     public function findOrCreate(
         object $participant,
-        string $agent,
-        string $provider,
+        string $model,
         string $title,
     ): Conversation {
-        return $this->findFor($participant, $agent, $provider)
-            ?? $this->createFor($participant, $provider, $title);
+        return $this->findFor($participant, $model)
+            ?? $this->createFor($participant, $model, $title);
     }
 
     public function latestExchange(
         User $user,
-        string $provider,
+        string $model,
     ): array {
         $conversation = Conversation::query()
             ->where('participant_type', User::class)
             ->where('participant_id', $user->id)
-            ->where('provider', $provider)
+            ->where('model', $model)
             ->latest('updated_at')
             ->first();
 

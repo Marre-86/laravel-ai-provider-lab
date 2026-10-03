@@ -27,21 +27,25 @@ class PromptController extends Controller
     {
         $user = User::find(1);
 
-        $lastExchanges = collect(config('ai.selectable_providers'))
-            ->mapWithKeys(fn (array $model, string $provider) => [
-                $provider => $this->conversationRepository->latestExchange(
+        $lastExchanges = collect(config('ai.selectable_models'))
+            ->mapWithKeys(fn (array $model, string $key) => [
+                $key => $this->conversationRepository->latestExchange(
                     $user,
-                    $provider,
+                    $key,
                 ),
             ]);
 
-        $selectedProvider = session('provider', array_key_first(config('ai.selectable_providers')));
+        $selectedModel = session('model', array_key_first(config('ai.selectable_models')));
+
+        // With every model switched off there is no selected entry to read, and
+        // $lastExchanges->get(null) would index into null.
+        $selected = $lastExchanges->get($selectedModel, ['prompt' => null, 'response' => null]);
 
         return view('welcome', [
-            'selectedProvider' => $selectedProvider,
+            'selectedModel' => $selectedModel,
             'lastExchanges' => $lastExchanges->toArray(),
-            'lastPrompt' => session('prompt', $lastExchanges->get($selectedProvider)['prompt']),
-            'lastResponse' => session('response', $lastExchanges->get($selectedProvider)['response']),
+            'lastPrompt' => session('prompt', $selected['prompt']),
+            'lastResponse' => session('response', $selected['response']),
         ]);
     }
 
@@ -49,26 +53,25 @@ class PromptController extends Controller
     {
         $validated = $request->validate([
             'prompt' => ['required', 'string', 'max:10000'],
-            'provider' => ['required', 'string', 'in:'.implode(',', array_keys(config('ai.selectable_providers')))],
+            'model' => ['required', 'string', 'in:'.implode(',', array_keys(config('ai.selectable_models')))],
         ]);
 
-        $selectedProvider = config("ai.selectable_providers.{$validated['provider']}");
+        $selectedModel = config("ai.selectable_models.{$validated['model']}");
 
         $user = User::find(1);
 
         $conversation = $this->conversationRepository->findOrCreate(
             $user,
-            Advisor::class,
-            $validated['provider'],
+            $validated['model'],
             $validated['prompt'],
         );
 
-        session()->put('provider', $validated['provider']);
+        session()->put('model', $validated['model']);
 
         try {
             $response = (new Advisor)
                 ->continue($conversation->id, $user)
-                ->prompt($validated['prompt'], provider: $selectedProvider['provider'], model: $selectedProvider['model']);
+                ->prompt($validated['prompt'], provider: $selectedModel['provider'], model: $selectedModel['model']);
         } catch (ProviderOverloadedException|ProviderConnectionException|AiException $e) {
             return back()->with('error', $e->getMessage());
         }
@@ -87,28 +90,29 @@ class PromptController extends Controller
     {
         $validated = $request->validate([
             'prompt' => ['required', 'string', 'max:10000'],
-            'provider' => ['required', 'string'],
+            // Without the in: rule an unknown key resolves to null below and the
+            // request fails with a 500 instead of a validation error.
+            'model' => ['required', 'string', 'in:'.implode(',', array_keys(config('ai.selectable_models')))],
         ]);
 
         $user = User::find(1);
 
         $conversation = $this->conversationRepository->findOrCreate(
             $user,
-            Advisor::class,
-            $validated['provider'],
+            $validated['model'],
             $validated['prompt'],
         );
 
-        $selectedProvider = config(
-            "ai.selectable_providers.{$validated['provider']}"
+        $selectedModel = config(
+            "ai.selectable_models.{$validated['model']}"
         );
 
         return (new Advisor)
             ->continue($conversation->id, $user)
             ->stream(
                 $validated['prompt'],
-                provider: $selectedProvider['provider'],
-                model: $selectedProvider['model'],
+                provider: $selectedModel['provider'],
+                model: $selectedModel['model'],
             );
     }
 
@@ -117,15 +121,15 @@ class PromptController extends Controller
         $validated = $request->validate([
             'prompt' => ['required', 'string', 'max:10000'],
             'instruction' => ['required', 'string', 'max:10000'],
-            'provider' => ['required', 'string', 'in:'.implode(',', array_keys(config('ai.selectable_providers')))],
+            'model' => ['required', 'string', 'in:'.implode(',', array_keys(config('ai.selectable_models')))],
             'responses' => ['required', 'array'],
             'responses.*' => ['nullable', 'string', 'max:20000'],
         ]);
 
-        $submitted = collect(config('ai.selectable_providers'))
-            ->map(fn (array $model, string $provider) => [
+        $submitted = collect(config('ai.selectable_models'))
+            ->map(fn (array $model, string $key) => [
                 'label' => $model['label'],
-                'response' => $validated['responses'][$provider] ?? null,
+                'response' => $validated['responses'][$key] ?? null,
             ])
             ->filter(fn (array $entry) => filled($entry['response']))
             ->map(fn (array $entry) => "### {$entry['label']}\n{$entry['response']}")
@@ -133,28 +137,28 @@ class PromptController extends Controller
 
         if ($submitted === '') {
             throw ValidationException::withMessages([
-                'responses' => 'There are no provider responses to evaluate.',
+                'responses' => 'There are no model responses to evaluate.',
             ]);
         }
 
-        $selectedProvider = config("ai.selectable_providers.{$validated['provider']}");
+        $selectedModel = config("ai.selectable_models.{$validated['model']}");
 
         return (new Reviewer)
             ->stream(
                 $this->composeReviewPrompt($validated['prompt'], $validated['instruction'], $submitted),
-                provider: $selectedProvider['provider'],
-                model: $selectedProvider['model'],
+                provider: $selectedModel['provider'],
+                model: $selectedModel['model'],
             );
     }
 
     /**
      * Combine the original prompt, the evaluation instruction and the collected
-     * provider answers into the single prompt sent to the reviewer.
+     * model answers into the single prompt sent to the reviewer.
      */
     private function composeReviewPrompt(string $prompt, string $instruction, string $submitted): string
     {
         return implode("\n\n", [
-            "## Prompt given to each provider\n\n".$prompt,
+            "## Prompt given to each model\n\n".$prompt,
             "## Instruction\n\n".$instruction,
             "## Answers\n\n".$submitted,
         ]);

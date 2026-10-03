@@ -21,21 +21,44 @@ return [
     'default_for_reranking' => 'cohere',
     'default_for_classification' => 'typesafe',
 
-    'selectable_providers' => [
-        'ollama' => [
-            'label' => 'Ollama',
+    /*
+    |--------------------------------------------------------------------------
+    | Selectable Models
+    |--------------------------------------------------------------------------
+    |
+    | The models the page offers for comparison. Each key is the model's own
+    | name and identifies one choice; the driver actually called is named
+    | separately, so two entries may share a single provider: 'nemotron-3-ultra'
+    | and 'space-bunny-alpha' both call OpenRouter and differ only in the model
+    | they request. Keep keys free of commas, because the validation rule builds
+    | its allowed list by joining them.
+    |
+    */
+
+    'selectable_models' => [
+        'gemma3-12b' => [
+            'label' => 'Gemma 3 12B',
             'provider' => 'ollama',
             'model' => 'gemma3:12b',
+            'provider_label' => 'Ollama (local)',
         ],
-        'gemini' => [
-            'label' => 'Gemini',
+        'gemini-3-flash-preview' => [
+            'label' => 'Gemini 3 Flash',
             'provider' => 'gemini',
             'model' => 'gemini-3-flash-preview',
+            'provider_label' => 'Google AI Studio',
         ],
-        'openrouter' => [
-            'label' => 'OpenRouter',
+        'nemotron-3-ultra' => [
+            'label' => 'Nemotron 3 Ultra',
             'provider' => 'openrouter',
             'model' => 'nvidia/nemotron-3-ultra-550b-a55b:free',
+            'provider_label' => 'OpenRouter',
+        ],
+        'space-bunny-alpha' => [
+            'label' => 'Space Bunny Alpha',
+            'provider' => 'openrouter',
+            'model' => 'stealth/space-bunny-alpha',
+            'provider_label' => 'OpenRouter',
         ],
     ],
 
@@ -45,7 +68,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | The default instruction shown in the evaluation textarea on the welcome
-    | page. It is sent alongside the original prompt and the collected provider
+    | page. It is sent alongside the original prompt and the collected model
     | responses, and the user may edit it before submitting.
     |
     */
@@ -53,9 +76,9 @@ return [
     'evaluation_prompt' => <<<'TEXT'
         Compare the answers below and evaluate them against the original prompt.
 
-        For each provider, note what it got right, what it got wrong, and anything it stated that the others contradict or that looks invented.
+        For each model, note what it got right, what it got wrong, and anything it stated that the others contradict or that looks invented.
 
-        Finish by naming the most accurate answer and explaining what made it the strongest. Flag any disagreement between providers rather than silently picking a side.
+        Finish by naming the most accurate answer and explaining what made it the strongest. Flag any disagreement between models rather than silently picking a side.
         TEXT,
 
     /*

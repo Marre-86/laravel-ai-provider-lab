@@ -12,14 +12,21 @@ class DatabaseSeeder extends Seeder
 
     /**
      * Seed the application's database.
+     *
+     * The lab has no authentication: PromptController reads User::find(1) as its
+     * participant. Seeding that row with an explicit id keeps a freshly wiped
+     * database usable after `migrate --seed`, instead of every page erroring with
+     * a null participant.
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        User::query()->firstOrCreate(
+            ['id' => 1],
+            [
+                'name' => 'Lab User',
+                'email' => 'lab@example.com',
+                'password' => 'password',
+            ],
+        );
     }
 }

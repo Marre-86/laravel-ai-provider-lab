@@ -19,6 +19,12 @@ return new class extends AiMigration
             $table->string('participant_type')->nullable();
             $table->unsignedBigInteger('participant_id')->nullable();
             $table->string('title');
+
+            // The key from config('ai.selectable_models') this conversation belongs
+            // to, so each model keeps its own thread. It is the model's name, not
+            // the provider: two entries may share one provider.
+            $table->string('model')->nullable()->index();
+
             $table->timestamps();
 
             $table->index(['participant_type', 'participant_id', 'updated_at'], 'participant_updated_at_index');

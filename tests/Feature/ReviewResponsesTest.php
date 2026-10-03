@@ -8,6 +8,14 @@ uses(RefreshDatabase::class);
 
 beforeEach(function () {
     User::factory()->create(['id' => 1]);
+
+    // Pinned rather than read from config/ai.php: which models are switched on
+    // locally is a preference, and these tests must not fail when one is
+    // commented out. The application code is still driven by the same shape.
+    config(['ai.selectable_models' => [
+        'gemma3-12b' => ['label' => 'Gemma 3 12B', 'provider' => 'ollama', 'model' => 'gemma3:12b'],
+        'gemini-3-flash-preview' => ['label' => 'Gemini 3 Flash', 'provider' => 'gemini', 'model' => 'gemini-3-flash-preview'],
+    ]]);
 });
 
 function reviewPayload(array $overrides = []): array
@@ -15,10 +23,10 @@ function reviewPayload(array $overrides = []): array
     return array_merge([
         'prompt' => 'Who won the last US Open?',
         'instruction' => 'Compare the answers.',
-        'provider' => 'gemini',
+        'model' => 'gemini-3-flash-preview',
         'responses' => [
-            'ollama' => 'Novak Djokovic.',
-            'gemini' => 'Coco Gauff.',
+            'gemma3-12b' => 'Novak Djokovic.',
+            'gemini-3-flash-preview' => 'Coco Gauff.',
         ],
     ], $overrides);
 }
@@ -34,30 +42,31 @@ it('sends the original prompt, the instruction and every collected answer to the
         && str_contains($recorded->prompt, 'Coco Gauff.'));
 });
 
-it('labels each answer with the provider that produced it', function () {
+it('labels each answer with the model that produced it', function () {
     Reviewer::fake(['Review complete.']);
 
     $this->postJson(route('prompts.review'), reviewPayload())->assertOk();
 
-    Reviewer::assertPrompted(fn ($recorded) => str_contains($recorded->prompt, '### Ollama')
-        && str_contains($recorded->prompt, '### Gemini'));
+    // The labels come from the configuration, so the assertion tracks them.
+    Reviewer::assertPrompted(fn ($recorded) => str_contains($recorded->prompt, '### Gemma 3 12B')
+        && str_contains($recorded->prompt, '### Gemini 3 Flash'));
 });
 
-it('leaves out providers that produced no answer', function () {
+it('leaves out models that produced no answer', function () {
     Reviewer::fake(['Review complete.']);
 
     $this->postJson(route('prompts.review'), reviewPayload([
-        'responses' => ['ollama' => 'Novak Djokovic.', 'gemini' => null],
+        'responses' => ['gemma3-12b' => 'Novak Djokovic.', 'gemini-3-flash-preview' => null],
     ]))->assertOk();
 
     Reviewer::assertPrompted(fn ($recorded) => ! str_contains($recorded->prompt, '### Gemini'));
 });
 
-it('refuses to review when no provider produced an answer', function () {
+it('refuses to review when no model produced an answer', function () {
     Reviewer::fake();
 
     $this->postJson(route('prompts.review'), reviewPayload([
-        'responses' => ['ollama' => null, 'gemini' => '   '],
+        'responses' => ['gemma3-12b' => null, 'gemini-3-flash-preview' => '   '],
     ]))
         ->assertStatus(422)
         ->assertJsonValidationErrors('responses');
@@ -65,12 +74,12 @@ it('refuses to review when no provider produced an answer', function () {
     Reviewer::assertNeverPrompted();
 });
 
-it('refuses a provider that is not selectable', function () {
+it('refuses a model that is not selectable', function () {
     Reviewer::fake();
 
-    $this->postJson(route('prompts.review'), reviewPayload(['provider' => 'openai']))
+    $this->postJson(route('prompts.review'), reviewPayload(['model' => 'openai']))
         ->assertStatus(422)
-        ->assertJsonValidationErrors('provider');
+        ->assertJsonValidationErrors('model');
 
     Reviewer::assertNeverPrompted();
 });
@@ -96,15 +105,15 @@ it('renders the review block with an instruction seeded from the configuration',
         ->assertSee('Evaluate responses', escape: false);
 });
 
-it('offers every selectable provider to review with', function () {
+it('offers every selectable model to review with', function () {
     $content = $this->get('/')->assertOk()->getContent();
 
-    foreach (config('ai.selectable_providers') as $key => $provider) {
-        expect($content)->toContain('<option value="'.$key.'">'.$provider['label'].' &mdash; '.$provider['model']);
+    foreach (config('ai.selectable_models') as $key => $model) {
+        expect($content)->toContain('<option value="'.$key.'">'.$model['label'].' &mdash; '.$model['model']);
     }
 });
 
-it('keeps the review block hidden until the providers have finished answering', function () {
+it('keeps the review block hidden until the models have finished answering', function () {
     $content = $this->get('/')->assertOk()->getContent();
 
     expect($content)->toMatch('/id="review-panel"[^>]*\bhidden\b/');
@@ -114,7 +123,7 @@ it('keeps the review block hidden until the providers have finished answering', 
     $streamed = strpos($script, 'Promise.allSettled');
     $revealed = strpos($script, "\$('#review-panel').removeClass('hidden')");
 
-    // The panel may only appear once every provider stream has settled.
+    // The panel may only appear once every model stream has settled.
     expect($streamed)->not->toBeFalse()
         ->and($revealed)->not->toBeFalse()
         ->and($revealed)->toBeGreaterThan($streamed);
